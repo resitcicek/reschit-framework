@@ -1,7 +1,7 @@
 <?php
 
 namespace Reschit\App\Core;
-
+use Reschit\App\Helpers\Redirect;
 
 class Route
 {
@@ -46,28 +46,31 @@ class Route
         $url = self::getURL();
         $method = self::getMethod();
         foreach (self::$routes[$method] as $path => $props) {
-            $callback = $props['callback'];
+
             foreach(self::$patterns as $key => $pattern){
                 $path = preg_replace('#'. $key . '#',$pattern,$path);
             }
 
             $pattern = '#^' . $path . '$#';
 
-
-
             if (preg_match($pattern, $url, $params)) {
                 self::$isRoute = true;
                 array_shift($params);
-
                 (count($params) > 0) ? $params = $params[0] : null;
+                if(isset($props['redirect'])){
+                    Redirect::to($props['redirect'], $props['status']);
+                }
+                else {
+                    $callback = $props['callback'];
 
-                if (is_callable($callback)) {
-                    echo call_user_func($callback,$params);
-                } elseif (is_string($callback)) {
-                    [$controllerName, $methodName] = explode('@', $callback);
-                    $controllerName = 'Reschit\App\Controllers\\'. $controllerName;
-                    $controller = new $controllerName();
-                    echo call_user_func([$controller, $methodName], $params);
+                    if (is_callable($callback)) {
+                        echo call_user_func($callback, $params);
+                    } elseif (is_string($callback)) {
+                        [$controllerName, $methodName] = explode('@', $callback);
+                        $controllerName = 'Reschit\App\Controllers\\' . $controllerName;
+                        $controller = new $controllerName();
+                        echo call_user_func([$controller, $methodName], $params);
+                    }
                 }
             }
         }
@@ -110,7 +113,7 @@ class Route
         $route = array_key_first(array_filter(self::$routes['get'], function($route) use($name){
             return $route['name'] === $name;
         }));
-        return str_replace(array_keys($params), array_values($params), $route);
+        return str_replace(array_map(fn($key)=>':' . $key), array_values($params), $route);
     }
 
     /**
@@ -129,5 +132,17 @@ class Route
     public static function group(\Closure $closure): void {
         $closure();
         self::$prefix = '';
+    }
+
+    public static function where($key, $pattern){
+        self::$patterns[':'.$key] = '(' . $pattern . ')';
+
+    }
+
+    public static function redirect($from, $to, $status = 301){
+        self::$routes['get'][$from] = [
+            'redirect' => $to,
+            'status' => $status
+        ];
     }
 }
